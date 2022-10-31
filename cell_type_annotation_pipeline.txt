@@ -1,0 +1,710 @@
+library(ktplots)
+library(beeswarm)
+library(WGCNA)
+library(edgeR)   
+library(feather)
+library(dendextend)
+library(monocle)
+library(ggplot2)
+library(dplyr)
+library(Seurat)
+library(matrixStats)
+library(Matrix)
+library(scrattch.hicat)
+library(knitr)
+library(parallel)
+source("/picb/neurosys/chiyuhao/0429/onestep_cluster1.R")
+###read file list
+info_file_all = read.csv("/picb/neurosys/chiyuhao/0429/qiricheng/code/info_thg_all_0612_final.csv")
+###
+
+for(total_index in 1:nrow(info_file_all)){
+  x = info_file_all[total_index,]
+  source("/picb/neurosys/chiyuhao/0429/onestep_cluster1.R")
+  print("program start")
+  print(as.character(x["pmid"]))
+  file_string = paste0(paste0("/picb/neurosys/chiyuhao/0429/tonghuige/Data/",as.character(x["pmid"])),"/")
+  
+  pubmed_id = as.character(x["pmid"])
+  ###get file path
+  if(as.character(x["files"])=="T1"){
+    
+    
+    data_index = as.character(x["description"])
+    temp_pubmed_data_index = paste0(paste0(pubmed_id,"_"),data_index)
+    file_path_root = paste0(paste0(file_string,data_index),"/")
+  }else{
+    temp_pubmed_data_index = paste0(paste0(pubmed_id,"_"),"1")
+    file_path_root = file_string
+  }
+  ###
+  if(file.exists(paste0(file_path_root,"umap.rds"))){
+    
+  }else{
+    tryCatch({
+      ###Obtain data information, including data species, sequencing method, and standardization method
+      species_name = as.character(x["species"])
+      read_method = "common"
+      data_type = as.character(x["seq_method"])
+      if(species_name=="Human"){
+        data_state = "n"
+      }else{
+        data_state = "c"
+      }
+      log_flag = as.character(x["log"])
+      norm_flag = as.character(x["normalizition"])
+      ###
+      
+      ###A reference dataset based on species is selected as input to the supervised classifier in the second step
+      if(species_name == "Mouse"){
+        ref_data = read.csv("/picb/neurosys/chiyuhao/0429/ref_data/mouse_mouse_gene.csv",row.names = 1)
+        ref_meta = read.csv("/picb/neurosys/chiyuhao/0429/ref_data/mouse_meta.csv",row.names = 1)
+        ref_meta$class_label = sub("mouse_","",ref_meta$class_label)
+        ref_meta$subclass_label = sub("mouse_","",ref_meta$subclass_label)
+      }else if(species_name == "Monkey"){
+        ref_data = read.csv("/picb/neurosys/chiyuhao/0429/ref_data/monkey.csv",row.names = 1)
+        ref_data = t(ref_data)
+        ref_meta = read.csv("/picb/neurosys/chiyuhao/0429/ref_data/monkey_meta.csv",row.names = 1)
+        ref_meta$class_label = sub("marmoset_","",ref_meta$class_label)
+        ref_meta$subclass_label = sub("marmoset_","",ref_meta$subclass_label)
+      }else if(species_name == "Human"){
+        ref_data = read.csv("/picb/neurosys/chiyuhao/0429/ref_data/human.csv",row.names = 1)
+        ref_data = t(ref_data)
+        ref_meta = read.csv("/picb/neurosys/chiyuhao/0429/ref_data/human_meta.csv",row.names = 1)
+        ref_meta$class_label = sub("human_","",ref_meta$class_label)
+        ref_meta$subclass_label = sub("human_","",ref_meta$subclass_label)
+      }else if(species_name == "Danio rerio"){
+        ref_data = read.csv("/picb/neurosys/chiyuhao/0429/ref_data/zebrafish.csv",row.names = 1)
+        ref_data = t(ref_data)
+        ref_meta = read.csv("/picb/neurosys/chiyuhao/0429/ref_data/zebrafish_meta.csv",row.names = 1)
+      }else if(species_name == "Macaca fascicularis"){
+        ref_data = read.csv("/picb/neurosys/chiyuhao/0429/ref_data/monkey.csv",row.names = 1)
+        ref_data = t(ref_data)
+        ref_meta = read.csv("/picb/neurosys/chiyuhao/0429/ref_data/monkey_meta.csv",row.names = 1)
+        ref_meta$class_label = sub("marmoset_","",ref_meta$class_label)
+        ref_meta$subclass_label = sub("marmoset_","",ref_meta$subclass_label)
+      }else if(species_name == "Macaca mulatta"){
+        ref_data = read.csv("/picb/neurosys/chiyuhao/0429/ref_data/monkey.csv",row.names = 1)
+        ref_data = t(ref_data)
+        ref_meta = read.csv("/picb/neurosys/chiyuhao/0429/ref_data/monkey_meta.csv",row.names = 1)
+        ref_meta$class_label = sub("marmoset_","",ref_meta$class_label)
+        ref_meta$subclass_label = sub("marmoset_","",ref_meta$subclass_label)
+      }else if(species_name == "Macaca"){
+        ref_data = read.csv("/picb/neurosys/chiyuhao/0429/ref_data/monkey.csv",row.names = 1)
+        ref_data = t(ref_data)
+        ref_meta = read.csv("/picb/neurosys/chiyuhao/0429/ref_data/monkey_meta.csv",row.names = 1)
+        ref_meta$class_label = sub("marmoset_","",ref_meta$class_label)
+        ref_meta$subclass_label = sub("marmoset_","",ref_meta$subclass_label)
+      }else if(species_name == "zebrafish"){
+        ref_data = read.csv("/picb/neurosys/chiyuhao/0429/ref_data/zebrafish.csv",row.names = 1)
+        ref_data = t(ref_data)
+        ref_meta = read.csv("/picb/neurosys/chiyuhao/0429/ref_data/zebrafish_meta.csv",row.names = 1)
+      }else if(species_name == "Drosophila melanogaster"){
+        ref_data = read.csv("/picb/neurosys/chiyuhao/0429/ref_data/fly.csv",row.names = 1)
+        ref_data = t(ref_data)
+        ref_meta = read.csv("/picb/neurosys/chiyuhao/0429/ref_data/fly_meta.csv",row.names = 1)
+      }else if(species_name == "Drosophila"){
+        ref_data = read.csv("/picb/neurosys/chiyuhao/0429/ref_data/fly.csv",row.names = 1)
+        ref_data = t(ref_data)
+        ref_meta = read.csv("/picb/neurosys/chiyuhao/0429/ref_data/fly_meta.csv",row.names = 1)
+      }else if(species_name == "Astyanax mexicanus"){
+        ref_data = read.csv("/picb/neurosys/chiyuhao/0429/ref_data/astyanax_mexicanus.csv",row.names = 1)
+        ref_data = t(ref_data)
+        ref_meta = read.csv("/picb/neurosys/chiyuhao/0429/ref_data/astyanax_mexicanus_meta.csv",row.names = 1)
+      }else{
+        print("Skip")
+      }
+      ###
+      
+      
+      
+      ######################################
+      ######1. clustering
+      ######################################
+      
+      
+      
+      
+      
+      ###Preprocessing data
+      
+      rowname_flag = F
+      result = tryCatch({
+        data = read.csv(paste0(file_path_root, "data.csv"), row.names = 1)
+        
+        rowname_flag = T
+      }, error = function(e){
+        
+      })
+      if(!rowname_flag){
+        data = read.csv(paste0(file_path_root, "data.csv"))
+        
+        data = aggregate(data[,-1], by = list(data[,1]), mean)
+        rownames(data) = data[,1]
+        data = data[,-1]
+        write.csv(data, paste0(file_path_root, "data.csv"),)
+      }
+      
+      
+      
+      data = as.matrix(data)
+      
+      shinyFail    = (grepl("\\-",rownames(data)))|is.element(substr(rownames(data),1,1),0:9)  # -'s crash the shiny, numbers add an "X"
+      excludeGenes = sort(rownames(data)[grepl("LOC",rownames(data))|grepl("LINC",rownames(data))|
+                                           grepl("FAM",rownames(data))|grepl("ORF",rownames(data))|grepl("KIAA",rownames(data))|
+                                           grepl("FLJ",rownames(data))|grepl("DKFZ",rownames(data))|
+                                           grepl("RPS",rownames(data))|grepl("RPL",rownames(data))|shinyFail])  # Also exclude ribosomal genes
+      
+      keepGenes    = setdiff(rownames(data),excludeGenes)
+      data = data[keepGenes,]
+      data = data[,!(colSums(data)==0)]
+      
+      if(norm_flag=="T1"){
+        norm.dat <- Matrix(data, sparse = TRUE)
+      }else{
+        norm.dat <- Matrix(data, sparse = TRUE)
+      }
+      
+      rm(data)
+      gc()
+      if(log_flag=="T1"){
+        
+      }else{
+        if(min(norm.dat@x)==0){
+          norm.dat@x <- log2(norm.dat@x+1)
+        }else{
+          norm.dat@x <- log2(norm.dat@x)
+        }
+      }
+      ###
+      
+      ###The appropriate clustering parameters were selected according to the sequencing method
+      set.seed(3456)
+      if(data_type == "Smart-seq"){
+        if(data_state == "c"){
+          de.param <- de_param(padj.th=0.01,
+                               q1.th       = 0.4,
+                               q.diff.th   = 0.7,
+                               de.score.th = 100,
+                               min.cells=4)
+        }else{
+          
+          de.param <- de_param(padj.th=0.01,
+                               q1.th       = 0.4,
+                               q.diff.th   = 0.7,
+                               de.score.th = 150,
+                               min.cells=4)
+        }
+      }else{
+        if(data_state == "n"){
+          de.param <- de_param(padj.th=0.01,
+                               q1.th       = 0.4,
+                               q.diff.th   = 0.7,
+                               de.score.th = 100,
+                               min.cells=10)
+        }else{
+          
+          
+          de.param <- de_param(padj.th=0.01,
+                               q1.th       = 0.4,
+                               q.diff.th   = 0.7,
+                               de.score.th = 150,
+                               min.cells=10)
+        }
+      }
+      ###
+      
+      
+      ###run clustering
+      dir.create(paste0(file_path_root,"run_cluster"))
+      result_1 <- run_consensus_cluster1(norm.dat,
+                                         niter = 1,
+                                         de.param = de.param,
+                                         dim.method = "pca",
+                                         output_dir = paste0(file_path_root,"run_cluster"),
+                                         mc.cores = 1)
+      
+      
+      
+      group_meta = data.frame(names(result_1$cl),result_1$cl)
+      colnames(group_meta) = c("cell","group")
+      
+      
+      new_data = norm.dat
+      rm(norm.dat)
+      gc()
+      ###
+      
+      ######################################
+      ######1. end of clustering
+      ######################################
+      
+      
+      ######################################
+      ######2. Supervised classification based on Seurat
+      ######################################
+      
+      
+      set.seed(3456)
+      
+      ###Classification for major class
+      common_gene = intersect(rownames(ref_data), rownames(new_data))
+      new_data = new_data[common_gene,]
+      reference_count <- ref_data[common_gene,]
+      reference_meta <- ref_meta
+      reference_seurat <- CreateSeuratObject(counts = reference_count, min.cells = 0, min.features = 0, project = "example")
+      reference_seurat <- AddMetaData(reference_seurat, reference_meta)
+      
+      #load query
+      query_count <- new_data
+      query_seurat <- CreateSeuratObject(counts = query_count, min.cells = 0, min.features = 0, project = "example")
+      
+      #standard pipeline
+      reference_seurat <- NormalizeData(object = reference_seurat)
+      reference_seurat <- FindVariableFeatures(object = reference_seurat, selection.method = 'vst', nfeatures = 2000)
+      reference_seurat <- ScaleData(reference_seurat)
+      
+      query_seurat <- FindVariableFeatures(object = query_seurat, selection.method = 'vst', nfeatures = 2000)
+      query_seurat <- ScaleData(query_seurat)
+      
+      ##prediction
+      k.score = min(30, floor(ncol(query_seurat)/2))
+      k.anchor = min(5, floor(ncol(query_seurat)/2))
+      k.weight = min(10, floor(ncol(query_seurat)/2))
+      error_flag = F
+      result = tryCatch({
+        sim.anchors <- FindTransferAnchors(reference = reference_seurat, query = query_seurat,
+                                           dims = 1:30,k.score = k.score, k.anchor = k.anchor)
+      }, error = function(e){
+        error_flag = T
+      })
+      if(!exists("sim.anchors")){
+        sim.anchors <- FindTransferAnchors(reference = reference_seurat, query = query_seurat,
+                                           dims = 1:30,k.score = k.score, k.anchor = k.anchor, project.query = T)
+      }
+      
+      ##replace Group with the actual column name from meta
+      k.weight = min(floor(nrow(sim.anchors@anchors)/2),k.weight)
+      k.weight = max(k.weight,3)
+      predictions <- TransferData(anchorset = sim.anchors, refdata = reference_seurat$class_label,
+                                  dims = 1:30,k.weight=k.weight)
+      query_seurat <- AddMetaData(object = query_seurat, metadata = predictions)
+      
+      predict_meta = data.frame(rownames(query_seurat@meta.data), query_seurat@meta.data$predicted.id)
+      
+      rownames(predict_meta) = predict_meta$rownames.query_seurat.meta.data.
+      colnames(predict_meta) = c("group","class_label")
+      for(i in unique(group_meta$group)){
+        temp = predict_meta[rownames(group_meta[group_meta$group==i,]),]
+        type = names(table(temp$class_label)[table(temp$class_label)==max(table(temp$class_label))])
+        if(max(table(temp$class_label)) <= (nrow(temp)/2)){
+          predict_meta[rownames(group_meta[group_meta$group==i,]),]$class_label = NA
+        }else{
+          predict_meta[rownames(group_meta[group_meta$group==i,]),]$class_label = type
+        }
+        
+      }
+      predict_meta = predict_meta[!is.na(predict_meta$class_label),]
+      new_data = new_data[,rownames(predict_meta)]
+      
+      all_label = unique(predict_meta$class_label)
+      all_meta = predict_meta[1,]
+      ###
+      
+      ###Classification for subclass
+      for(i in all_label){
+        reference_count <- ref_data[common_gene,][,ref_meta$class_label==i]
+        reference_meta <- ref_meta[ref_meta$class_label==i,]
+        reference_seurat <- CreateSeuratObject(counts = reference_count, min.cells = 0, min.features = 0, project = "example")
+        reference_seurat <- AddMetaData(reference_seurat, reference_meta)
+        
+        #load query
+        query_count <- new_data[,predict_meta$class_label==i]
+        query_seurat <- CreateSeuratObject(counts = query_count, min.cells = 0, min.features = 0, project = "example")
+        
+        #standard pipeline
+        reference_seurat <- NormalizeData(object = reference_seurat)
+        reference_seurat <- FindVariableFeatures(object = reference_seurat, selection.method = 'vst', nfeatures = 2000)
+        reference_seurat <- ScaleData(reference_seurat)
+        
+        query_seurat <- FindVariableFeatures(object = query_seurat, selection.method = 'vst', nfeatures = 2000)
+        query_seurat <- ScaleData(query_seurat)
+        
+        ##prediction###
+        k.score = min(30, floor(ncol(query_seurat)/2))
+        k.anchor = min(5, floor(ncol(query_seurat)/2))
+        k.weight = min(10, floor(ncol(query_seurat)/2))
+        error_flag = F
+        result = tryCatch({
+          sim.anchors <- FindTransferAnchors(reference = reference_seurat, query = query_seurat,
+                                             dims = 1:30,k.score = k.score, k.anchor = k.anchor)
+        }, error = function(e){
+          error_flag = T
+        })
+        if(!exists("sim.anchors")){
+          sim.anchors <- FindTransferAnchors(reference = reference_seurat, query = query_seurat,
+                                             dims = 1:30,k.score = k.score, k.anchor = k.anchor, project.query = T)
+        }
+        ##replace Group with the actual column name from meta
+        k.weight = min(floor(nrow(sim.anchors@anchors)/2),k.weight)
+        k.weight = max(k.weight,3)
+        predictions <- TransferData(anchorset = sim.anchors, refdata = reference_seurat$subclass_label,
+                                    dims = 1:30,k.weight=k.weight)
+        query_seurat <- AddMetaData(object = query_seurat, metadata = predictions)
+        
+        predict_meta1 = data.frame(rownames(query_seurat@meta.data), query_seurat@meta.data$predicted.id)
+        
+        rownames(predict_meta1) = predict_meta1$rownames.query_seurat.meta.data.
+        colnames(predict_meta1) = c("group","class_label")
+        all_meta <- rbind(all_meta, predict_meta1)
+      }
+      ###
+      
+      all_meta = all_meta[-1,]
+      rownames(all_meta) = all_meta$group
+      colnames(all_meta) = c("cell","subclass")
+      all_meta_temp = all_meta
+      for(i in unique(group_meta$group)){
+        temp = all_meta[rownames(group_meta[group_meta$group==i,]),]
+        type = names(table(temp$subclass)[table(temp$subclass)==max(table(temp$subclass))])
+        if(max(table(temp$subclass)) <= (nrow(temp)/2)){
+          all_meta[rownames(group_meta[group_meta$group==i,]),]$subclass = NA
+        }else{
+          all_meta[rownames(group_meta[group_meta$group==i,]),]$subclass = type
+        }
+        
+      }
+      all_meta = all_meta[!is.na(all_meta$subclass),]
+      
+      data_meta = data.frame(all_meta$cell, predict_meta[rownames(all_meta),]$class_label, all_meta$subclass,group_meta[rownames(all_meta),]$group)
+      rownames(data_meta) = data_meta$all_meta.cell
+      colnames(data_meta) = c("cell","class","subclass_label","cluster_label")
+      data_meta$cluster_label = paste0("a",data_meta$cluster_label)
+      data_meta = data_meta[data_meta$cluster_label %in% names(table(data_meta$cluster_label))[table(data_meta$cluster_label)>1],]
+      new_data = new_data[,rownames(data_meta)]
+      
+      ######################################
+      ######2. End of classification
+      ######################################
+      
+      
+      
+      ######################################
+      ######3. Select marker gene
+      ######################################
+      
+      mouse_data <- CreateSeuratObject(counts = new_data, min.cells = 0, min.features = 0, project = "example")
+      mouse_data <- AddMetaData(mouse_data, data_meta)
+      Idents(mouse_data) <- mouse_data$subclass_label
+      all_marker_list = list()
+      num = 1
+      for(i in unique(mouse_data$subclass_label)){
+        temp_mouse_data = subset(mouse_data, idents = i)
+        Idents(temp_mouse_data) <- temp_mouse_data$cluster_label
+        #plan(workers = 6)
+        mouse_cells_markers <- FindAllMarkers(temp_mouse_data, test.use = "roc",densify=T)
+        mouse_cells_markers = mouse_cells_markers[mouse_cells_markers$avg_log2FC>0,]
+        all_marker_list[[num]] = mouse_cells_markers
+        num = num + 1
+      }
+      names(all_marker_list) = unique(mouse_data$subclass_label)
+      saveRDS(all_marker_list, paste0(file_path_root,"de_gene.rds"))
+      
+      
+      cl = mouse_data@meta.data$cluster_label
+      names(cl) = rownames(mouse_data@meta.data)
+      temp_exp = as.matrix(mouse_data@assays$RNA@data)
+      medianExpr = do.call("cbind", tapply(names(cl), cl, function(x) rowMedians(temp_exp[,x])))
+      rm(temp_exp)
+      gc()
+      rownames(medianExpr) = rownames(mouse_data@assays$RNA@data)
+      
+      
+      median_marker_list = list()
+      num=1
+      yes_num = 0
+      cluster_names = c()
+      for(i in unique(mouse_data@meta.data$subclass_label)){
+        temp_cluster = unique(mouse_data@meta.data[mouse_data@meta.data$subclass_label==i,]$cluster_label)
+        temp_expr = medianExpr[,temp_cluster]
+        cluster_names <- c(cluster_names, temp_cluster)
+        if(length(temp_cluster)==1){
+          median_marker_list[[num]] = NA
+          num = num + 1
+        }else{
+          for(j in temp_cluster){
+            current = temp_expr[,j]
+            if(sum(colnames(temp_expr)!=j)==1){
+              other = temp_expr[,colnames(temp_expr)!=j]
+            }else{
+              other = rowMax(temp_expr[,colnames(temp_expr)!=j])
+            }
+            names(other) = rownames(temp_expr)
+            temp_gene = rownames(temp_expr)[current>=other]
+            if(length(temp_gene)==0){
+              temp_gene = NA
+            }else{
+              yes_num = yes_num + 1
+            }
+            median_marker_list[[num]] = temp_gene
+            
+            num = num + 1
+          }
+        }
+        
+      }
+      for(i in 1:length(median_marker_list)){
+        print(length(median_marker_list[[i]]))
+      }
+      
+      temp_all_marker_list = all_marker_list
+      names(median_marker_list) = cluster_names
+      for(i in 1:length(all_marker_list)){
+        temp = temp_all_marker_list[[i]][1,]
+        for(j in unique(all_marker_list[[i]]$cluster)){
+          temp_median_gene = median_marker_list[[j]]
+          temp = rbind(temp, all_marker_list[[i]][all_marker_list[[i]]$cluster==j,][all_marker_list[[i]][all_marker_list[[i]]$cluster==j,]$gene %in%intersect(all_marker_list[[i]]$gene,temp_median_gene),])
+          print(length(intersect(all_marker_list[[i]]$gene,temp_median_gene)))
+        }
+        temp_all_marker_list[[i]] = temp[-1,]
+      }
+      
+      all_marker_list = temp_all_marker_list
+      
+      
+      
+      Idents(mouse_data) <- mouse_data$subclass_label
+      num = 1
+      binary_data_frame = data.frame(0,0,0)
+      for(i in unique(mouse_data$subclass_label)){
+        print(num)
+        temp_mouse_data = subset(mouse_data, idents = i)
+        Idents(temp_mouse_data) <- temp_mouse_data$cluster_label
+        temp_mouse_data_exp = as.matrix(temp_mouse_data@assays$RNA@data)
+        temp_cluster = as.character(unique(temp_mouse_data@meta.data$cluster_label))
+        
+      #   for(j in temp_cluster){
+      #     current_temp_cluster = data.frame(0,0,0,0,0,0,0,0,0)
+      #     temp_score = 0
+      #     temp_current_marker_list_temp = all_marker_list[[num]][all_marker_list[[num]]$cluster==j,]
+      #     temp_current_marker_list = temp_current_marker_list_temp[temp_current_marker_list_temp$avg_log2FC>0,]$gene
+      #     for(g in temp_current_marker_list){
+      #       temp_medianExpr = medianExpr[,temp_cluster]
+      #       # median_sec_median_score = max(temp_medianExpr[g,colnames(temp_medianExpr)!=j]) / temp_medianExpr[g,j]
+      #       # if(median_sec_median_score == Inf){
+      #       #   median_sec_median_score = 1
+      #       # }
+      #       # median_sec_median_score = 1 - median_sec_median_score
+      #       
+      #       temp_score = 0
+      #       other_temp_cluster = temp_cluster[temp_cluster!=j]
+      #       temp_median = median(temp_mouse_data_exp[g,rownames(temp_mouse_data@meta.data[temp_mouse_data@meta.data$cluster_label==j,])])
+      #       temp_percentage = sum(temp_mouse_data_exp[g,rownames(temp_mouse_data@meta.data[temp_mouse_data@meta.data$cluster_label==j,])]!=0) / length(temp_mouse_data_exp[g,rownames(temp_mouse_data@meta.data[temp_mouse_data@meta.data$cluster_label==j,])])
+      #       all_temp_other_percentage = c()
+      #       for(k in other_temp_cluster){
+      #         temp_other_median = median(temp_mouse_data_exp[g,rownames(temp_mouse_data@meta.data[temp_mouse_data@meta.data$cluster_label==k,])])
+      #         temp_other_percentage = sum(temp_mouse_data_exp[g,rownames(temp_mouse_data@meta.data[temp_mouse_data@meta.data$cluster_label==k,])]==0)
+      #         all_temp_other_percentage = c(all_temp_other_percentage, temp_other_percentage)
+      #         temp222 = (1 - temp_other_median / temp_median) * temp_other_percentage/length(temp_mouse_data_exp[g,rownames(temp_mouse_data@meta.data[temp_mouse_data@meta.data$cluster_label==k,])])
+      #         if(!is.na(temp222)){
+      #           if(temp222 < 0){
+      #             temp222 = 0
+      #           }
+      #         }
+      #         
+      #         temp_score = temp_score + temp222
+      #       }
+      #       temp_score = temp_score / (length(temp_cluster) - 1)
+      #       binary_data_frame = rbind(binary_data_frame, c(j, temp_score,g))
+      #     }
+      #     
+      #   }
+      #   
+      #   num = num + 1
+      # }
+        for(j in temp_cluster){
+          current_temp_cluster = data.frame(0,0,0,0,0,0,0,0,0)
+          temp_score = 0
+          if(nrow(all_marker_list[[num]]) > 0){
+            if(nrow(all_marker_list[[num]][all_marker_list[[num]]$cluster==j,])>0){
+              temp_current_marker_list_temp = all_marker_list[[num]][all_marker_list[[num]]$cluster==j,]
+              temp_current_marker_list_temp = temp_current_marker_list_temp[temp_current_marker_list_temp$avg_log2FC>0,]
+              for(l in 1:nrow(temp_current_marker_list_temp)){
+                g = temp_current_marker_list_temp[l,"gene"]
+                temp_medianExpr = medianExpr[,temp_cluster]
+                # median_sec_median_score = max(temp_medianExpr[g,colnames(temp_medianExpr)!=j]) / temp_medianExpr[g,j]
+                # if(median_sec_median_score == Inf){
+                #   median_sec_median_score = 1
+                # }
+                # median_sec_median_score = 1 - median_sec_median_score
+                
+                temp_score = 0
+                other_temp_cluster = temp_cluster[temp_cluster!=j]
+                temp_median = median(temp_mouse_data_exp[g,rownames(temp_mouse_data@meta.data[temp_mouse_data@meta.data$cluster_label==j,])])
+                temp_percentage = sum(temp_mouse_data_exp[g,rownames(temp_mouse_data@meta.data[temp_mouse_data@meta.data$cluster_label==j,])]!=0) / length(temp_mouse_data_exp[g,rownames(temp_mouse_data@meta.data[temp_mouse_data@meta.data$cluster_label==j,])])
+                all_temp_other_percentage = c()
+                for(k in other_temp_cluster){
+                  temp_other_median = median(temp_mouse_data_exp[g,rownames(temp_mouse_data@meta.data[temp_mouse_data@meta.data$cluster_label==k,])])
+                  temp_other_percentage = sum(temp_mouse_data_exp[g,rownames(temp_mouse_data@meta.data[temp_mouse_data@meta.data$cluster_label==k,])]==0)
+                  all_temp_other_percentage = c(all_temp_other_percentage, temp_other_percentage)
+                  temp222 = (1 - temp_other_median / temp_median) * temp_other_percentage/length(temp_mouse_data_exp[g,rownames(temp_mouse_data@meta.data[temp_mouse_data@meta.data$cluster_label==k,])])
+                  if(!is.na(temp222)){
+                    if(temp222 < 0){
+                      temp222 = 0
+                    }
+                  }
+                  
+                  temp_score = temp_score + temp222
+                }
+                temp_score = temp_score / (length(temp_cluster) - 1)
+                current_temp_cluster = rbind(current_temp_cluster, c(j, temp_score,g,as.character(temp_current_marker_list_temp[l,1:6])))
+                
+              }
+            }
+          }
+          
+          current_temp_cluster = current_temp_cluster[-1,]
+          current_temp_cluster$X0.1 = as.numeric(current_temp_cluster$X0.1)
+          current_temp_cluster = current_temp_cluster[!is.nan(current_temp_cluster$X0.1),]
+          current_temp_cluster = current_temp_cluster[!is.infinite(current_temp_cluster$X0.1),]
+          current_temp_cluster = current_temp_cluster[order(current_temp_cluster$X0.1, decreasing = T),]
+          if(nrow(current_temp_cluster)>0){
+            current_temp_cluster = current_temp_cluster[1:min(20, nrow(current_temp_cluster)),]
+          }else{
+            current_temp_cluster1 = data.frame(j,NA,NA,NA,NA,NA,NA,NA,NA)
+            colnames(current_temp_cluster1) = colnames(current_temp_cluster)
+            current_temp_cluster = current_temp_cluster1
+          }
+          binary_data_frame = rbind(binary_data_frame, current_temp_cluster)
+        }
+        
+        num = num + 1
+      }
+      
+      binary_data_frame$X0.1 = as.numeric(binary_data_frame$X0.1)
+      binary_data_frame = binary_data_frame[!is.nan(binary_data_frame$X0.1),]
+      binary_data_frame = binary_data_frame[!is.infinite(binary_data_frame$X0.1),]
+      
+      binary_data_frame = binary_data_frame[-1,]
+      
+      all_fc_list <- c()
+      for(i in unique(binary_data_frame$X0)){
+        temp_binary_data_frame = binary_data_frame[binary_data_frame$X0==i,]
+        for(j in 1:length(all_marker_list)){
+          if(i %in% all_marker_list[[j]]$cluster){
+            temp_marker_list = all_marker_list[[j]][all_marker_list[[j]]$cluster==i,]
+            temp_fc_list = temp_marker_list[temp_binary_data_frame$X0.2,]$avg_log2FC
+            all_fc_list <- c(all_fc_list, temp_fc_list)
+          }
+        }
+      }
+      binary_data_frame <- cbind(binary_data_frame, all_fc_list)
+      binary_gene = data.frame(0,0,0,0,0)
+      for(i in unique(binary_data_frame$X0)){
+        temp = binary_data_frame[binary_data_frame$X0==i,]
+        binary_gene = rbind(binary_gene, temp$X0.2[1:5])
+      }
+      binary_gene = binary_gene[-1,]
+      rownames(binary_gene) = unique(binary_data_frame$X0)
+      
+      data_meta_cluster_level = unique(data.frame(data_meta$class,data_meta$subclass_label,data_meta$cluster_label))
+      rownames(data_meta_cluster_level) = data_meta_cluster_level$data_meta.cluster_label
+      colnames(data_meta_cluster_level) = c("class","subclass","group")
+      data_meta_final = data.frame(0,0,0,0,0,0,0,0)
+      for(i in 1:nrow(data_meta_cluster_level)){
+        if(rownames(data_meta_cluster_level)[i] %in% rownames(binary_gene)){
+          temp = c(as.character(data_meta_cluster_level[i,]), as.character(binary_gene[rownames(data_meta_cluster_level)[i],]))
+        }else{
+          temp = c(as.character(data_meta_cluster_level[i,]), NA,NA,NA,NA,NA)
+        }
+        data_meta_final = rbind(data_meta_final, temp)
+      }
+      data_meta_final = data_meta_final[-1,]
+      
+      colnames(data_meta_final) = c("class","subclass","cluster","gene1","gene2","gene3","gene4","gene5")
+      #write.csv(data_meta_final, paste0(file_path_root,"cluster_table.csv"))
+      
+      
+      
+      temp <- data.frame(0,0)
+      for(i in unique(data_meta_final$subclass)){
+        subclass_num = 1
+        temp_data = data_meta_final[data_meta_final$subclass==i,]
+        for(j in 1:length(temp_data[,1])){
+          if(!is.na(temp_data[j,"gene1"])){
+            temp_name = paste0(paste0(paste0(paste0(temp_data[j,"class"],"_"),temp_data[j,"subclass"]),"_"),temp_data[j,"gene1"])
+            temp <- rbind(temp, c(temp_data[j,"cluster"], temp_name))
+          }else{
+            temp <- rbind(temp, c(temp_data[j,"cluster"], paste0(paste0(paste0(paste0(paste0(paste0(temp_data[j,"class"],"_"),temp_data[j,"subclass"]),"_"),temp_pubmed_data_index),"_"),subclass_num)))
+            subclass_num = subclass_num + 1
+          }
+        }
+      }
+      temp = temp[-1,]
+      rownames(temp) = temp$X0
+      data_meta_final$cluster_new = temp[data_meta_final$cluster,2]
+      write.csv(data_meta_final, paste0(file_path_root,"cluster_table.csv"))
+      for(i in unique(data_meta$cluster_label)){
+        data_meta[data_meta$cluster_label==i,"cluster_label"] = temp[i,2]
+      }
+      write.csv(data_meta, paste0(file_path_root,"new_anno.csv"))
+      
+      write.csv(new_data, paste0(file_path_root,"new_data.csv"))
+      
+      
+      ######################################
+      ######3. End of select marker gene
+      ######################################
+      
+      
+      
+      
+      
+      ######################################
+      ######4. Draw umap plot
+      ######################################
+      
+      
+      
+      query_seurat <- CreateSeuratObject(counts = new_data, min.cells = 0, min.features = 0, project = "example")
+      query_seurat <- AddMetaData(object = query_seurat, metadata = data_meta)
+      Idents(query_seurat) = query_seurat$cluster_label
+      
+      query_seurat <- NormalizeData(object = query_seurat)
+      query_seurat <- FindVariableFeatures(object = query_seurat, selection.method = 'vst', nfeatures = 2000)
+      query_seurat <- ScaleData(query_seurat)
+      
+      query_seurat <- RunPCA(query_seurat, features = VariableFeatures(object = query_seurat),npcs=100)
+      query_seurat <- RunUMAP(query_seurat, dims = 1:100)
+      write.csv(query_seurat@reductions$umap@cell.embeddings, paste0(file_path_root,"umap_index.csv"))
+      saveRDS(query_seurat, paste0(file_path_root,"umap.rds"))
+      ######################################
+      ######4. End of drawing umap
+      ######################################
+      
+      print("program end")
+    },error=function(e){
+      file_error_name = paste0(file_path_root,"error.txt")
+      write.table("error",file_error_name)
+      tryCatch({
+        file_error_name = paste0(file_path_root,"error_detail.txt")
+        write.table(as.character(e),file_error_name)
+      },error=function(e){
+        
+      })
+    })
+  }
+  
+  
+  
+}
+
+
+
+
+
+
+
+
+##################################end
+
